@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   LineChart,
   Line,
@@ -38,6 +38,17 @@ export const Graph: React.FC<GraphProps> = ({
   finalRoot,
   minimal = false
 }) => {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768 || 'ontouchstart' in window);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   const data = useMemo(() => {
     try {
       const math = (window as any).math;
@@ -48,8 +59,8 @@ export const Graph: React.FC<GraphProps> = ({
       const pointsCount = 200;
       const plotData = [];
 
-      // Reduce padding for minimal mode to fill the space
-      const paddingFactor = minimal ? 0.1 : 0.5;
+      // No padding in minimal mode to respect exact ranges
+      const paddingFactor = minimal ? 0 : 0.15;
       const padding = (max - min) * paddingFactor;
       const start = min - padding;
       const end = max + padding;
@@ -93,35 +104,37 @@ export const Graph: React.FC<GraphProps> = ({
   }, [finalRoot, equation]);
 
   return (
-    <div className={`w-full h-full bg-zinc-900/50 rounded-2xl border border-zinc-800 ${minimal ? 'p-0' : 'p-4'}`}>
+    <div className={`w-full h-full bg-zinc-900/50 rounded-2xl border border-zinc-800 ${minimal ? 'p-0' : 'pt-2 pr-2 pb-2 pl-0'}`}>
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={minimal ? { top: 5, right: 5, bottom: 5, left: 5 } : { top: 20, right: 20, bottom: 20, left: 20 }}>
-          {!minimal && <CartesianGrid strokeDasharray="3 3" stroke="#333" />}
-          {!minimal && (
-            <XAxis 
-              dataKey="x" 
-              type="number" 
-              domain={xDomain || ['auto', 'auto']} 
-              stroke="#666"
-              fontSize={12}
-              allowDataOverflow={true}
-            />
-          )}
-          {!minimal && (
-            <YAxis 
-              type="number" 
-              domain={yDomain || ['auto', 'auto']} 
-              stroke="#666"
-              fontSize={12}
-              allowDataOverflow={true}
-            />
-          )}
-          <Tooltip 
-            contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px' }}
-            itemStyle={{ color: '#fff' }}
+        <LineChart data={data} margin={minimal ? { top: 5, right: 5, bottom: 5, left: 5 } : { top: 10, right: 10, bottom: 10, left: 0 }}>
+          {!minimal && <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />}
+          <XAxis 
+            dataKey="x" 
+            type="number" 
+            domain={xDomain || ['auto', 'auto']} 
+            stroke="#666"
+            fontSize={10}
+            allowDataOverflow={true}
+            hide={minimal}
           />
-          <ReferenceLine y={0} stroke="#666" strokeWidth={1} />
-          <ReferenceLine x={0} stroke="#666" strokeWidth={1} />
+          <YAxis 
+            type="number" 
+            domain={yDomain || ['auto', 'auto']} 
+            stroke="#666"
+            fontSize={10}
+            width={minimal ? 0 : 35}
+            tickMargin={2}
+            allowDataOverflow={true}
+            hide={minimal}
+          />
+          {!minimal && !isMobile && (
+            <Tooltip 
+              contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px' }}
+              itemStyle={{ color: '#fff' }}
+            />
+          )}
+          <ReferenceLine y={0} stroke="#555" strokeWidth={2} />
+          <ReferenceLine x={0} stroke="#555" strokeWidth={2} />
           
           {interval && (
             <>
@@ -149,6 +162,7 @@ export const Graph: React.FC<GraphProps> = ({
             strokeWidth={2} 
             dot={false} 
             isAnimationActive={false}
+            animationDuration={0}
           />
 
           {tangent && (
@@ -160,6 +174,7 @@ export const Graph: React.FC<GraphProps> = ({
               strokeDasharray="5 5"
               dot={false} 
               isAnimationActive={false}
+              animationDuration={0}
             />
           )}
 
@@ -172,6 +187,7 @@ export const Graph: React.FC<GraphProps> = ({
               strokeDasharray="5 5"
               dot={false} 
               isAnimationActive={false}
+              animationDuration={0}
             />
           )}
           

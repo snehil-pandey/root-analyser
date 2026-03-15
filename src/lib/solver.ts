@@ -40,6 +40,11 @@ export const solveBisection = (
     const currentB = b;
     mid = (a + b) / 2;
     const fmid = f(mid);
+    
+    if (isNaN(fmid) || !isFinite(fmid)) {
+      return { root: null, iterations, method: 'Bisection', error: 'Calculation resulted in an invalid number (NaN/Infinity).' };
+    }
+
     const error = Math.abs(b - a) / 2;
 
     iterations.push({ 
@@ -89,8 +94,15 @@ export const solveRegulaFalsi = (
     const currentA = a;
     const currentB = b;
     // Formula for Regula-Falsi: c = (a*f(b) - b*f(a)) / (f(b) - f(a))
+    if (Math.abs(fb - fa) < 1e-15) {
+      return { root: null, iterations, method: 'Regula-Falsi', error: 'Division by zero in Regula-Falsi formula.' };
+    }
     c = (a * fb - b * fa) / (fb - fa);
     const fc = f(c);
+
+    if (isNaN(fc) || !isFinite(fc)) {
+      return { root: null, iterations, method: 'Regula-Falsi', error: 'Calculation resulted in an invalid number (NaN/Infinity).' };
+    }
     const error = i > 1 ? Math.abs(c - iterations[iterations.length - 1].x) : Math.abs(b - a);
 
     iterations.push({ 
@@ -139,12 +151,18 @@ export const solveNewton = (
     }
 
     const xNext = x - fx / dfx;
+    const fxNext = f(xNext);
+
+    if (isNaN(fxNext) || !isFinite(fxNext)) {
+      return { root: null, iterations, method: 'Newton-Raphson', error: 'Calculation resulted in an invalid number (NaN/Infinity).' };
+    }
+
     const error = Math.abs(xNext - x);
 
     iterations.push({ 
       iteration: i, 
       x: xNext, 
-      fx: f(xNext), 
+      fx: fxNext, 
       error, 
       xPrev: x,
       a: x,
@@ -181,12 +199,18 @@ export const solveSecant = (
     }
 
     const xNext = x1 - fx1 * (x1 - x0) / (fx1 - fx0);
+    const fxNext = f(xNext);
+
+    if (isNaN(fxNext) || !isFinite(fxNext)) {
+      return { root: null, iterations, method: 'Secant', error: 'Calculation resulted in an invalid number (NaN/Infinity).' };
+    }
+
     const error = Math.abs(xNext - x1);
 
     iterations.push({ 
       iteration: i, 
       x: xNext, 
-      fx: f(xNext), 
+      fx: fxNext, 
       error, 
       a: x0, 
       b: x1,

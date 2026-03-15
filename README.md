@@ -1,20 +1,22 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Root Analyser
 
-# Run and deploy your AI Studio app
+Root Analyser is an interactive visualization tool designed for **mathematics enthusiasts, students, and learners** to explore numerical root-finding algorithms through **live graph simulation and step-by-step iteration analysis**.
 
-This contains everything you need to run your app locally.
+Instead of treating root-finding algorithms as abstract formulas, this tool allows users to **observe how each algorithm converges toward a root visually on a graph while tracking numerical steps in real time.**
 
-View your app in AI Studio: https://ai.studio/apps/7ebdaa76-a7f3-4531-8003-7349135007e1
+🌐 **Live Demo**  
+https://root-analyser.vercel.app
 
-## Run Locally
+---
 
-**Prerequisites:**  Node.js
+# Tech Stack
 
+Frontend: Interactive UI (AI-assisted design)  
+Core Logic: Custom numerical method implementations  
+Graphing: Dynamic function visualization (using recharts)  
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+---
+
+# Educational Purpose
+
+Root Analyser was built to help learners develop **intuition about numerical root-finding algorithms**, allowing them to observe how different techniques converge and how iteration values evolve.

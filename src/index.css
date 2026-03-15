@@ -7,21 +7,44 @@
 }
 
 @layer base {
-  .custom-scrollbar::-webkit-scrollbar {
+  .custom-scrollbar::-webkit-scrollbar,
+  .custom-scrollbar-h::-webkit-scrollbar {
     width: 4px;
     height: 4px;
   }
 
-  .custom-scrollbar::-webkit-scrollbar-track {
+  .custom-scrollbar::-webkit-scrollbar-track,
+  .custom-scrollbar-h::-webkit-scrollbar-track {
     background: transparent;
   }
 
-  .custom-scrollbar::-webkit-scrollbar-thumb {
+  .custom-scrollbar::-webkit-scrollbar-thumb,
+  .custom-scrollbar-h::-webkit-scrollbar-thumb {
     background: #27272a;
     border-radius: 10px;
   }
 
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover,
+  .custom-scrollbar-h::-webkit-scrollbar-thumb:hover {
     background: #3f3f46;
   }
+}
+
+@media (orientation: landscape) {
+  .landscape\:grid {
+    display: grid !important;
+  }
+  .landscape\:grid-cols-\[2fr_1fr\] {
+    grid-template-columns: 2fr 1fr !important;
+  }
+  .landscape\:grid-rows-\[1fr_auto\] {
+    grid-template-rows: 1fr auto !important;
+  }
+  .landscape\:col-span-2 {
+    grid-column: span 2 / span 2 !important;
+  }
+  .landscape\:order-1 { order: 1 !important; }
+  .landscape\:order-2 { order: 2 !important; }
+  .landscape\:order-3 { order: 3 !important; }
+  .landscape\:min-h-0 { min-height: 0 !important; }
 }
