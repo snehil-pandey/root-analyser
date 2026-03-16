@@ -1,16 +1,88 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RootAnalyser</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" as="style">
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>
 
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Root Analyser - Numerical Methods Root Solver (Bisection, Regula-Falsi, Newton-Raphson, Secant)</title>
+
+  <meta name="description"
+    content="Root Analyser is a free interactive numerical methods calculator that solves nonlinear equations using Bisection, Regula-Falsi, Newton-Raphson, and Secant methods with step-by-step visualization. Perfect for engineering, mathematics, and numerical analysis students.">
+
+  <meta name="keywords"
+    content="root finder calculator, numerical methods calculator, bisection method calculator, regula falsi calculator, newton raphson calculator, secant method calculator, equation root solver, numerical analysis tool, root finding algorithms visualization, engineering mathematics calculator">
+
+  <meta name="robots" content="index, follow">
+  <meta name="author" content="Snehil Pandey">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- OpenGraph -->
+  <meta property="og:title" content="Root Analyser - Interactive Root Finding Visualizer">
+  <meta property="og:description"
+    content="Solve nonlinear equations using Bisection, Regula-Falsi, Newton-Raphson, and Secant methods with interactive step-by-step visualization.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://root-analyser.vercel.app/">
+  <meta property="og:image" content="https://root-analyser.vercel.app/preview.png">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Root Analyser - Numerical Methods Root Solver">
+  <meta name="twitter:description"
+    content="Interactive root finding calculator for Bisection, Regula-Falsi, Newton-Raphson, and Secant methods.">
+  <meta name="twitter:image" content="https://root-analyser.vercel.app/preview.png">
+
+  <script type="application/ld+json">
+    {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Root Analyser",
+    "applicationCategory": "EducationalApplication",
+    "operatingSystem": "Web",
+    "description": "Interactive numerical methods root solver for Bisection, Regula-Falsi, Newton-Raphson, and Secant methods.",
+    "url": "https://root-analyser.vercel.app/",
+    "author": {
+      "@type": "Person",
+      "name": "Snehil Pandey"
+    }
+    }
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
+    as="style">
+
+  <style>
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+  <div class="visually-hidden">
+    <h1>Root Analyser – Numerical Methods Root Solver</h1>
+
+    <p>
+      Root Analyser is a free online numerical methods calculator that solves
+      nonlinear equations using Bisection, Regula-Falsi, Newton-Raphson, and
+      Secant methods with step-by-step visualization.
+    </p>
+
+    <p>
+      The tool helps students and teachers understand iterative root finding
+      algorithms used in numerical analysis, engineering mathematics, and
+      scientific computing.
+    </p>
+  </div>
+</body>
+
+</html>
