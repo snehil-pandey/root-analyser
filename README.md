@@ -1,11 +1,21 @@
 # Root Analyser
 
-Root Analyser is an interactive visualization tool designed for **mathematics enthusiasts, students, and learners** to explore numerical root-finding algorithms through **live graph simulation and step-by-step iteration analysis**.
+Root Analyser is an interactive numerical methods tool that helps students visualize and compare root-finding algorithms.
 
-Instead of treating root-finding algorithms as abstract formulas, this tool allows users to **observe how each algorithm converges toward a root visually on a graph while tracking numerical steps in real time.**
+Supported methods:
+- Bisection Method
+- Regula-Falsi Method (False Position)
+- Newton-Raphson Method
+- Secant Method
 
-🌐 **Live Demo**  
-https://root-analyser.vercel.app
+Features:
+- Step-by-step iteration visualization
+- Graphical function plotting
+- Adjustable precision and iteration limits
+- Educational comparison of numerical methods
+
+Live Demo:
+https://root-analyser.vercel.app/
 
 ---
 
