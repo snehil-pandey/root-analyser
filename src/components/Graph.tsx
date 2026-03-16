@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import * as math from 'mathjs';
 import {
   LineChart,
   Line,
@@ -10,6 +11,7 @@ import {
   ReferenceLine,
   ReferenceDot,
 } from 'recharts';
+import { Info, AlertTriangle } from 'lucide-react';
 
 interface GraphProps {
   equation: string;
@@ -22,6 +24,8 @@ interface GraphProps {
   tangent?: { x: number; y: number; slope: number } | null;
   secant?: { x1: number; y1: number; x2: number; y2: number } | null;
   finalRoot?: number | null;
+  calculatedRoot?: number | null;
+  precision?: number;
   minimal?: boolean;
 }
 
@@ -36,6 +40,8 @@ export const Graph: React.FC<GraphProps> = ({
   tangent,
   secant,
   finalRoot,
+  calculatedRoot,
+  precision = 5,
   minimal = false
 }) => {
   const [isMobile, setIsMobile] = useState(false);
@@ -49,12 +55,17 @@ export const Graph: React.FC<GraphProps> = ({
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  const data = useMemo(() => {
+  const { data, error: plotError } = useMemo(() => {
     try {
-      const math = (window as any).math;
-      if (!math || !equation) return [];
+      if (!math || !equation) return { data: [], error: null };
       
-      const expr = math.compile(equation);
+      let expr;
+      try {
+        expr = math.compile(equation);
+      } catch (e) {
+        return { data: [], error: e instanceof Error ? e.message : 'Invalid equation' };
+      }
+
       const [min, max] = xDomain || range;
       const pointsCount = 200;
       const plotData = [];
@@ -64,9 +75,22 @@ export const Graph: React.FC<GraphProps> = ({
       const padding = (max - min) * paddingFactor;
       const start = min - padding;
       const end = max + padding;
-      const paddedStep = (end - start) / pointsCount;
+      
+      // Safety check for range
+      if (isNaN(start) || isNaN(end) || !isFinite(start) || !isFinite(end) || start >= end) {
+        return { data: [], error: 'Invalid range for plotting' };
+      }
 
+      const paddedStep = (end - start) / pointsCount;
+      if (paddedStep <= 0) return { data: [], error: null };
+
+      const startTime = Date.now();
       for (let x = start; x <= end; x += paddedStep) {
+        // Prevent freezing the UI if plotting takes too long
+        if (Date.now() - startTime > 100) { // 100ms limit for plotting
+          return { data: plotData, error: 'Plotting timed out. The function might be too complex.' };
+        }
+
         try {
           const y = expr.evaluate({ x });
           if (typeof y === 'number' && isFinite(y)) {
@@ -85,26 +109,21 @@ export const Graph: React.FC<GraphProps> = ({
           }
         } catch (e) {}
       }
-      return plotData;
+      return { data: plotData, error: plotData.length === 0 ? 'No valid points to plot' : null };
     } catch (e) {
-      return [];
+      return { data: [], error: e instanceof Error ? e.message : 'Plotting error' };
     }
-  }, [equation, range, xDomain, tangent, secant]);
-
-  const rootPoint = useMemo(() => {
-    if (finalRoot === null || finalRoot === undefined) return null;
-    try {
-      const math = (window as any).math;
-      const expr = math.compile(equation);
-      const y = expr.evaluate({ x: finalRoot });
-      return { x: finalRoot, y: typeof y === 'number' ? y : 0 };
-    } catch (e) {
-      return { x: finalRoot, y: 0 };
-    }
-  }, [finalRoot, equation]);
+  }, [equation, range, xDomain, tangent, secant, minimal]);
 
   return (
-    <div className={`w-full h-full bg-zinc-900/50 rounded-2xl border border-zinc-800 ${minimal ? 'p-0' : 'pt-2 pr-2 pb-2 pl-0'}`}>
+    <div className={`w-full h-full bg-zinc-900/50 rounded-2xl border border-zinc-800 relative ${minimal ? 'p-0' : 'pt-2 pr-2 pb-2 pl-0'}`}>
+      {plotError && equation && !minimal && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-600 z-10 bg-zinc-900/40 backdrop-blur-[2px] p-6 text-center">
+          <AlertTriangle className="w-8 h-8 mb-2 text-rose-500/50" />
+          <p className="text-[10px] uppercase tracking-widest font-bold mb-1 text-zinc-400">Plotting Error</p>
+          <p className="text-[9px] opacity-60 max-w-[200px]">{plotError}</p>
+        </div>
+      )}
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={minimal ? { top: 5, right: 5, bottom: 5, left: 5 } : { top: 10, right: 10, bottom: 10, left: 0 }}>
           {!minimal && <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />}
@@ -202,16 +221,55 @@ export const Graph: React.FC<GraphProps> = ({
             />
           ))}
 
-          {rootPoint && (
-            <ReferenceDot 
-              x={rootPoint.x} 
-              y={rootPoint.y} 
-              r={6} 
-              fill="#a855f7" 
-              stroke="#ef4444"
-              strokeWidth={2}
-              label={{ position: 'top', value: 'Root', fill: '#a855f7', fontSize: 12, fontWeight: 'bold' }}
-            />
+          {finalRoot !== null && finalRoot !== undefined && (
+            minimal ? (
+              <ReferenceDot 
+                x={finalRoot} 
+                y={0} 
+                r={4} 
+                fill="#a855f7" 
+                stroke="none" 
+              />
+            ) : (
+              <ReferenceLine 
+                x={finalRoot} 
+                stroke="#a855f7" 
+                strokeWidth={2} 
+                strokeDasharray="3 3"
+                label={{ 
+                  position: 'insideTopLeft', 
+                  value: 'Actual Root', 
+                  fill: '#a855f7', 
+                  fontSize: 10, 
+                  fontWeight: 'bold' 
+                }} 
+              />
+            )
+          )}
+
+          {calculatedRoot !== null && calculatedRoot !== undefined && (
+            minimal ? (
+              <ReferenceDot 
+                x={calculatedRoot} 
+                y={0} 
+                r={3} 
+                fill="#06b6d4" 
+                stroke="none" 
+              />
+            ) : (
+              <ReferenceLine 
+                x={calculatedRoot} 
+                stroke="#06b6d4" 
+                strokeWidth={2} 
+                label={{ 
+                  position: 'insideTopRight', 
+                  value: 'Calculated Root', 
+                  fill: '#06b6d4', 
+                  fontSize: 10, 
+                  fontWeight: 'bold' 
+                }} 
+              />
+            )
           )}
         </LineChart>
       </ResponsiveContainer>

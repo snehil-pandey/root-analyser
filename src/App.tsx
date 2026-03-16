@@ -15,7 +15,8 @@ import {
   ChevronDown,
   Info,
   X,
-  Menu
+  Menu,
+  AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { InlineMath, BlockMath } from 'react-katex';
@@ -35,6 +36,7 @@ export default function App() {
   const [decimalPlaces, setDecimalPlaces] = useState(5);
   const [liveSync, setLiveSync] = useState(true);
   const [isAnyInputFocused, setIsAnyInputFocused] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<{ equation?: string; range?: string; precision?: string }>({});
   const [zoomMode, setZoomMode] = useState<'None' | 'Auto' | 'Focus'>('Auto');
   const [selectedMethod, setSelectedMethod] = useState<Method>('Bisection');
   const [result, setResult] = useState<SolverResult | null>(null);
@@ -44,6 +46,7 @@ export default function App() {
   const [showExplanation, setShowExplanation] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLargeScreen, setIsLargeScreen] = useState(false);
+  const [maxIterations, setMaxIterations] = useState<number | string>(100);
 
   useEffect(() => {
     const checkSize = () => {
@@ -56,45 +59,148 @@ export default function App() {
     return () => window.removeEventListener('resize', checkSize);
   }, []);
 
+  // Real-time validation effect
+  useEffect(() => {
+    const errors: { equation?: string; range?: string; precision?: string; maxIter?: string } = {};
+    
+    if (equation.trim()) {
+      try {
+        math.parse(equation);
+      } catch (e) {
+        errors.equation = 'Invalid mathematical expression';
+      }
+    }
+
+    if (isNaN(rangeA) || isNaN(rangeB) || !isFinite(rangeA) || !isFinite(rangeB)) {
+      errors.range = 'Range values must be valid numbers';
+    }
+
+    if (decimalPlaces !== undefined && (decimalPlaces < 1 || decimalPlaces > 11 || !Number.isInteger(decimalPlaces))) {
+      errors.precision = 'Precision must be an integer between 1 and 11';
+    }
+
+    if (maxIterations !== '' && (Number(maxIterations) < 1 || Number(maxIterations) > 500 || !Number.isInteger(Number(maxIterations)))) {
+      errors.maxIter = 'Max iterations must be between 1 and 500';
+    }
+
+    // Only update if errors changed to avoid unnecessary re-renders
+    setValidationErrors(prev => {
+      if (JSON.stringify(prev) !== JSON.stringify(errors)) {
+        return errors;
+      }
+      return prev;
+    });
+  }, [equation, rangeA, rangeB, decimalPlaces]);
+
   const solve = useCallback(() => {
     setIsSolving(true);
     setCurrentStepIndex(-1);
     
-    const tolerance = 0.5 * Math.pow(10, -decimalPlaces);
+    // Clear previous validation errors
+    setValidationErrors({});
 
-    try {
-      const node = math.parse(equation);
-      const f = (x: number) => node.evaluate({ x });
+    // Use setTimeout to make it asynchronous and avoid blocking the UI
+    setTimeout(() => {
+      const tolerance = 0.5 * Math.pow(10, -decimalPlaces);
+      const maxIter = maxIterations === '' ? 100 : Number(maxIterations);
       
-      let solveRes: SolverResult;
+      // Basic validation
+      const errors: { equation?: string; range?: string; precision?: string; maxIter?: string } = {};
       
-      if (selectedMethod === 'Bisection') {
-        solveRes = solveBisection(f, rangeA, rangeB, tolerance);
-      } else if (selectedMethod === 'Regula-Falsi') {
-        solveRes = solveRegulaFalsi(f, rangeA, rangeB, tolerance);
-      } else if (selectedMethod === 'Newton-Raphson') {
-        const deriv = math.derivative(node, 'x');
-        const df = (x: number) => deriv.evaluate({ x });
-        solveRes = solveNewton(f, df, rangeA, tolerance);
-      } else {
-        solveRes = solveSecant(f, rangeA, rangeB, tolerance);
+      if (!equation.trim()) {
+        errors.equation = 'Equation is required';
       }
-      
-      setResult(solveRes);
-      if (solveRes.iterations.length > 0) {
-        setCurrentStepIndex(0);
+
+      if (isNaN(rangeA) || isNaN(rangeB) || !isFinite(rangeA) || !isFinite(rangeB)) {
+        errors.range = 'Range values must be valid numbers';
       }
-    } catch (err) {
-      setResult({
-        root: null,
-        iterations: [],
-        method: selectedMethod,
-        error: err instanceof Error ? err.message : 'Invalid equation'
-      });
-    } finally {
-      setIsSolving(false);
-    }
-  }, [equation, rangeA, rangeB, decimalPlaces, selectedMethod]);
+
+      if (decimalPlaces < 1 || decimalPlaces > 11 || !Number.isInteger(decimalPlaces)) {
+        errors.precision = 'Precision must be an integer between 1 and 11';
+      }
+
+      if (maxIterations !== '' && (Number(maxIterations) < 1 || Number(maxIterations) > 500 || !Number.isInteger(Number(maxIterations)))) {
+        errors.maxIter = 'Max iterations must be between 1 and 500';
+      }
+
+      if (Object.keys(errors).length > 0) {
+        setValidationErrors(errors);
+        setIsSolving(false);
+        return;
+      }
+
+      try {
+        const node = math.parse(equation);
+        const f = (x: number) => {
+          const val = node.evaluate({ x });
+          if (typeof val !== 'number' || isNaN(val) || !isFinite(val)) {
+            throw new Error(`Function evaluation failed at x=${x}`);
+          }
+          return val;
+        };
+        
+        // Test evaluation at start points
+        try {
+          f(rangeA);
+          f(rangeB);
+        } catch (e) {
+          setValidationErrors({ equation: 'Equation is invalid or undefined in the given range' });
+          setIsSolving(false);
+          return;
+        }
+
+        // Method specific validation
+        if ((selectedMethod === 'Bisection' || selectedMethod === 'Regula-Falsi')) {
+          if (rangeA === rangeB) {
+            setValidationErrors({ range: 'Start and End points cannot be the same' });
+            setIsSolving(false);
+            return;
+          }
+          const fa = f(rangeA);
+          const fb = f(rangeB);
+          if (fa * fb > 0) {
+            // We don't block it entirely as the user might want to see it fail, 
+            // but we should warn. For now, let's just let the solver handle the error message.
+          }
+        }
+        
+        let solveRes: SolverResult;
+        
+        if (selectedMethod === 'Bisection') {
+          solveRes = solveBisection(f, rangeA, rangeB, tolerance, decimalPlaces, maxIter);
+        } else if (selectedMethod === 'Regula-Falsi') {
+          solveRes = solveRegulaFalsi(f, rangeA, rangeB, tolerance, decimalPlaces, maxIter);
+        } else if (selectedMethod === 'Newton-Raphson') {
+          let deriv;
+          try {
+            deriv = math.derivative(node, 'x');
+          } catch (e) {
+            throw new Error('Could not calculate derivative for Newton-Raphson. Please check your equation.');
+          }
+          const df = (x: number) => deriv.evaluate({ x });
+          solveRes = solveNewton(f, df, rangeA, tolerance, decimalPlaces, maxIter);
+        } else {
+          solveRes = solveSecant(f, rangeA, rangeB, tolerance, decimalPlaces, maxIter);
+        }
+        
+        setResult(solveRes);
+        if (solveRes.iterations.length > 0) {
+          setCurrentStepIndex(0);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Invalid equation';
+        setValidationErrors({ equation: msg });
+        setResult({
+          root: null,
+          iterations: [],
+          method: selectedMethod,
+          error: msg
+        });
+      } finally {
+        setIsSolving(false);
+      }
+    }, 0);
+  }, [equation, rangeA, rangeB, decimalPlaces, selectedMethod, maxIterations]);
 
   // Auto-solve effect with debouncing for the equation string
   // Disabled while user is actively typing (focused)
@@ -109,20 +215,49 @@ export default function App() {
 
   const currentStep = result && currentStepIndex >= 0 ? result.iterations[currentStepIndex] : null;
 
+  const tangentLine = useMemo(() => {
+    if (selectedMethod === 'Newton-Raphson' && currentStep && currentStep.xPrev !== undefined) {
+      try {
+        const node = math.parse(equation);
+        const deriv = math.derivative(node, 'x');
+        const f = (x: number) => node.evaluate({ x });
+        const df = (x: number) => deriv.evaluate({ x });
+        
+        const prevX = currentStep.xPrev;
+        
+        return {
+          x: prevX,
+          y: f(prevX),
+          slope: df(prevX)
+        };
+      } catch (e) {}
+    }
+    return null;
+  }, [selectedMethod, currentStep, equation]);
+
   const graphPoints = useMemo(() => {
     const pts = [];
     if (currentStep) {
-      pts.push({ x: currentStep.x, y: 0, label: `x${currentStep.iteration}`, color: '#3b82f6' });
-      if (currentStep.xPrev !== undefined) {
-        pts.push({ x: currentStep.xPrev, y: 0, label: 'Prev', color: '#f43f5e' });
+      if (selectedMethod === 'Newton-Raphson' && tangentLine) {
+        // Tangent point on the curve - Blue
+        pts.push({ x: tangentLine.x, y: tangentLine.y, label: `x${currentStep.iteration - 1}`, color: '#3b82f6' });
+        // New approximation on x-axis - Cyan
+        pts.push({ x: currentStep.x, y: 0, label: `x${currentStep.iteration}`, color: '#06b6d4' });
+      } else {
+        pts.push({ x: currentStep.x, y: 0, label: `x${currentStep.iteration}`, color: '#06b6d4' });
+        if (currentStep.xPrev !== undefined) {
+          pts.push({ x: currentStep.xPrev, y: 0, label: 'Prev', color: '#f43f5e' });
+        }
       }
     } else if (result?.root) {
       pts.push({ x: result.root, y: 0, label: 'Root', color: '#a855f7' });
     }
     return pts;
-  }, [currentStep, result]);
+  }, [currentStep, result, selectedMethod, tangentLine]);
 
   const graphInterval = useMemo(() => {
+    if (selectedMethod === 'Newton-Raphson') return undefined;
+    
     if (currentStep && currentStep.a !== undefined && currentStep.b !== undefined) {
       return [currentStep.a, currentStep.b] as [number, number];
     }
@@ -134,31 +269,6 @@ export default function App() {
     }
     return undefined;
   }, [currentStep, selectedMethod]);
-
-  const tangentLine = useMemo(() => {
-    if (selectedMethod === 'Newton-Raphson' && currentStep) {
-      try {
-        const node = math.parse(equation);
-        const deriv = math.derivative(node, 'x');
-        const f = (x: number) => node.evaluate({ x });
-        const df = (x: number) => deriv.evaluate({ x });
-        
-        // Use the point from the PREVIOUS iteration to show how we got to the current x
-        const prevX = currentStep.iteration > 1 
-          ? result?.iterations[currentStepIndex - 1].x 
-          : rangeA;
-        
-        if (prevX !== undefined) {
-          return {
-            x: prevX,
-            y: f(prevX),
-            slope: df(prevX)
-          };
-        }
-      } catch (e) {}
-    }
-    return null;
-  }, [selectedMethod, currentStep, equation, result, currentStepIndex, rangeA]);
 
   const secantLine = useMemo(() => {
     if (selectedMethod === 'Secant' && currentStep && currentStep.a !== undefined && currentStep.b !== undefined) {
@@ -179,25 +289,28 @@ export default function App() {
   const graphDomains = useMemo(() => {
     if (!currentStep) return { x: undefined, y: undefined };
 
+    const actualRoot = result?.root;
+    
+    // Default logic for all methods
     let xMin: number, xMax: number;
-    if (currentStep.a !== undefined && currentStep.b !== undefined) {
+    if (selectedMethod !== 'Newton-Raphson' && currentStep.a !== undefined && currentStep.b !== undefined) {
       xMin = currentStep.a;
       xMax = currentStep.b;
     } else {
-      const points = [currentStep.x, currentStep.xPrev].filter(v => v !== undefined) as number[];
+      const points = [currentStep.x, currentStep.xPrev, actualRoot].filter(v => v !== undefined && v !== null && isFinite(v as number)) as number[];
       xMin = Math.min(...points);
       xMax = Math.max(...points);
     }
 
     if (zoomMode === 'None') {
-      return { x: [rangeA - 1, rangeB + 1] as [number, number], y: [-2, 2] as [number, number] };
+      const limit = Math.max(0.1, Math.abs(rangeA) + Math.abs(rangeB));
+      return { x: [rangeA - 1, rangeB + 1] as [number, number], y: [-limit, limit] as [number, number] };
     }
 
+    // Default/Fallback logic for other methods or Zoom mode
     const center = (xMin + xMax) / 2;
 
     if (zoomMode === 'Zoom') {
-      // Follows the center but keeps a fixed width of 2 units
-      // This shows the interval lines actually decreasing in size relative to the view
       return { 
         x: [center - 1, center + 1] as [number, number], 
         y: [-2, 2] as [number, number] 
@@ -205,23 +318,19 @@ export default function App() {
     }
 
     if (zoomMode === 'Focus') {
-      // Locked to the interval lines - they stay at the edges of the screen
-      // Axis values and curve change to show convergence
       return { 
         x: [xMin, xMax] as [number, number], 
         y: [-2, 2] as [number, number] 
       };
     }
 
-    // Add padding
+    // Auto Mode (Fallback)
     const xPadding = Math.max(Math.abs(xMax - xMin) * 0.5, 0.1);
     const xDomain: [number, number] = [xMin - xPadding, xMax + xPadding];
-
-    // For Y domain, we want to see the curve around 0
     const yDomain: [number, number] = [-2, 2]; 
 
     return { x: xDomain, y: yDomain };
-  }, [currentStep, zoomMode, rangeA, rangeB]);
+  }, [currentStep, zoomMode, rangeA, rangeB, result, selectedMethod]);
 
   const reset = () => {
     setEquation('x^3 - 4*x - 1');
@@ -230,6 +339,7 @@ export default function App() {
     setDecimalPlaces(5);
     setZoomMode('Auto');
     setResult(null);
+    setValidationErrors({});
     setCurrentStepIndex(-1);
   };
 
@@ -322,57 +432,168 @@ export default function App() {
                   <div className="relative">
                     <input 
                       type="text" 
+                      id="equation-input"
                       value={equation}
                       onChange={(e) => setEquation(e.target.value)}
                       onFocus={() => setIsAnyInputFocused(true)}
                       onBlur={() => setIsAnyInputFocused(false)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 font-mono text-emerald-400 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
+                      className={cn(
+                        "w-full bg-zinc-950 border rounded-xl px-4 py-3 font-mono text-emerald-400 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all",
+                        validationErrors.equation ? "border-rose-500" : "border-zinc-800"
+                      )}
                       placeholder="e.g. x^2 - 2"
                     />
                     <Search className="absolute right-4 top-3.5 w-4 h-4 text-zinc-600" />
                   </div>
+                  {validationErrors.equation && (
+                    <motion.p 
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mt-1.5 text-[10px] text-rose-500 font-medium flex items-center gap-1"
+                    >
+                      <AlertCircle className="w-3 h-3" />
+                      {validationErrors.equation}
+                    </motion.p>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-zinc-400 mb-2">Start (a)</label>
-                    <input 
-                      type="number" 
-                      value={rangeA}
-                      onChange={(e) => setRangeA(Number(e.target.value))}
-                      onFocus={() => setIsAnyInputFocused(true)}
-                      onBlur={() => setIsAnyInputFocused(false)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 font-mono text-white focus:border-emerald-500 outline-none transition-all"
-                    />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-zinc-400 mb-2">Start (a)</label>
+                      <input 
+                        type="text" 
+                        id="range-a-input"
+                        value={rangeA === 0 && isAnyInputFocused ? '' : rangeA}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '' || val === '-') {
+                            setRangeA(val as any);
+                          } else {
+                            const num = Number(val);
+                            if (!isNaN(num)) setRangeA(num);
+                          }
+                        }}
+                        onFocus={() => setIsAnyInputFocused(true)}
+                        onBlur={() => setIsAnyInputFocused(false)}
+                        className={cn(
+                          "w-full bg-zinc-950 border rounded-xl px-4 py-3 font-mono text-white focus:border-emerald-500 outline-none transition-all",
+                          validationErrors.range ? "border-rose-500" : "border-zinc-800"
+                        )}
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-zinc-400 mb-2">End (b)</label>
+                      <input 
+                        type="text" 
+                        id="range-b-input"
+                        value={rangeB === 0 && isAnyInputFocused ? '' : rangeB}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '' || val === '-') {
+                            setRangeB(val as any);
+                          } else {
+                            const num = Number(val);
+                            if (!isNaN(num)) setRangeB(num);
+                          }
+                        }}
+                        onFocus={() => setIsAnyInputFocused(true)}
+                        onBlur={() => setIsAnyInputFocused(false)}
+                        className={cn(
+                          "w-full bg-zinc-950 border rounded-xl px-4 py-3 font-mono text-white focus:border-emerald-500 outline-none transition-all",
+                          validationErrors.range ? "border-rose-500" : "border-zinc-800"
+                        )}
+                        placeholder="3"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-zinc-400 mb-2">End (b)</label>
-                    <input 
-                      type="number" 
-                      value={rangeB}
-                      onChange={(e) => setRangeB(Number(e.target.value))}
-                      onFocus={() => setIsAnyInputFocused(true)}
-                      onBlur={() => setIsAnyInputFocused(false)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 font-mono text-white focus:border-emerald-500 outline-none transition-all"
-                    />
-                  </div>
-                </div>
+                {validationErrors.range && (
+                  <motion.p 
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-1.5 text-[10px] text-rose-500 font-medium flex items-center gap-1"
+                  >
+                    <AlertCircle className="w-3 h-3" />
+                    {validationErrors.range}
+                  </motion.p>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium text-zinc-400 mb-2">Precision</label>
                   <div className="flex items-center gap-3">
+                      <input 
+                        type="text" 
+                        id="precision-input"
+                        value={decimalPlaces === 0 && isAnyInputFocused ? '' : decimalPlaces}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '') {
+                            setDecimalPlaces(0);
+                          } else {
+                            const num = parseInt(val);
+                            if (!isNaN(num)) setDecimalPlaces(num);
+                          }
+                        }}
+                        onFocus={() => setIsAnyInputFocused(true)}
+                        onBlur={() => setIsAnyInputFocused(false)}
+                        className={cn(
+                          "w-24 bg-zinc-950 border rounded-xl px-4 py-3 font-mono text-white focus:border-emerald-500 outline-none transition-all",
+                          validationErrors.precision ? "border-rose-500" : "border-zinc-800"
+                        )}
+                        placeholder="5"
+                        min="1"
+                        max="11"
+                      />
+                    <span className="text-xs text-zinc-500 font-mono">decimals</span>
+                  </div>
+                  {validationErrors.precision && (
+                    <motion.p 
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mt-1.5 text-[10px] text-rose-500 font-medium flex items-center gap-1"
+                    >
+                      <AlertCircle className="w-3 h-3" />
+                      {validationErrors.precision}
+                    </motion.p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-zinc-400 mb-2">Max Iterations</label>
+                  <div className="flex items-center gap-3">
                     <input 
-                      type="number" 
-                      min="1"
-                      max="15"
-                      value={decimalPlaces}
-                      onChange={(e) => setDecimalPlaces(Number(e.target.value))}
+                      type="text" 
+                      id="max-iter-input"
+                      value={maxIterations === '' && isAnyInputFocused ? '' : maxIterations}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '') {
+                          setMaxIterations('');
+                        } else {
+                          const num = parseInt(val);
+                          if (!isNaN(num)) setMaxIterations(num);
+                        }
+                      }}
                       onFocus={() => setIsAnyInputFocused(true)}
                       onBlur={() => setIsAnyInputFocused(false)}
-                      className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 font-mono text-white focus:border-emerald-500 outline-none transition-all"
+                      className={cn(
+                        "w-24 bg-zinc-950 border rounded-xl px-4 py-3 font-mono text-white focus:border-emerald-500 outline-none transition-all",
+                        validationErrors.maxIter ? "border-rose-500" : "border-zinc-800"
+                      )}
+                      placeholder="100"
                     />
-                    <span className="text-xs text-zinc-500 font-mono">digits</span>
+                    <span className="text-xs text-zinc-500 font-mono">steps</span>
                   </div>
+                  {validationErrors.maxIter && (
+                    <motion.p 
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mt-1.5 text-[10px] text-rose-500 font-medium flex items-center gap-1"
+                    >
+                      <AlertCircle className="w-3 h-3" />
+                      {validationErrors.maxIter}
+                    </motion.p>
+                  )}
                 </div>
 
                 <div className="pt-4 flex flex-col gap-3">
@@ -502,147 +723,175 @@ export default function App() {
               tangent={tangentLine}
               secant={secantLine}
               finalRoot={result?.root}
+              calculatedRoot={currentStep?.x}
+              precision={decimalPlaces}
             />
           </div>
 
-          {/* Step Control: Always visible after graph */}
-          {result && result.iterations.length > 0 && (
-            <div className="order-2 xl:order-3 landscape:order-3 xl:col-span-2 landscape:col-span-2 bg-zinc-900 border border-zinc-800 rounded-3xl p-3 xl:p-4 flex items-center justify-between gap-4 shadow-xl shrink-0">
-              <div className="flex items-center gap-2">
-                <Layers className="w-4 h-4 text-emerald-500" />
-                <h3 className="text-[10px] xl:text-[11px] uppercase tracking-widest font-bold text-zinc-500">Steps</h3>
-              </div>
-              
-              <div className="flex-1 flex items-center gap-4">
-                <button 
-                  onClick={() => setCurrentStepIndex(prev => Math.max(0, prev - 1))}
-                  disabled={currentStepIndex <= 0}
-                  className="p-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 rounded-xl transition-all"
+          {/* Step Control: Always reserved space to prevent CLS */}
+          <div className="order-2 xl:order-3 landscape:order-3 xl:col-span-2 landscape:col-span-2 min-h-[64px] xl:min-h-[72px] flex items-center">
+            <AnimatePresence mode="wait">
+              {result && result.iterations.length > 0 ? (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-3xl p-3 xl:p-4 flex items-center justify-between gap-4 shadow-xl shrink-0"
                 >
-                  <ChevronRight className="w-5 h-5 rotate-180" />
-                </button>
-                
-                <div className="flex-1 relative">
-                  <input 
-                    type="range" 
-                    min="0" 
-                    max={result.iterations.length - 1} 
-                    value={currentStepIndex}
-                    onChange={(e) => setCurrentStepIndex(Number(e.target.value))}
-                    className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-                  />
+                  <div className="flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-emerald-500" />
+                    <h3 className="text-[10px] xl:text-[11px] uppercase tracking-widest font-bold text-zinc-500">Steps</h3>
+                  </div>
+                  
+                  <div className="flex-1 flex items-center gap-4">
+                    <button 
+                      onClick={() => setCurrentStepIndex(prev => Math.max(0, prev - 1))}
+                      disabled={currentStepIndex <= 0}
+                      className="p-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 rounded-xl transition-all"
+                    >
+                      <ChevronRight className="w-5 h-5 rotate-180" />
+                    </button>
+                    
+                    <div className="flex-1 relative">
+                      <input 
+                        type="range" 
+                        min="0" 
+                        max={result.iterations.length - 1} 
+                        value={currentStepIndex}
+                        onChange={(e) => setCurrentStepIndex(Number(e.target.value))}
+                        className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                      />
+                    </div>
+
+                    <button 
+                      onClick={() => setCurrentStepIndex(prev => Math.min(result.iterations.length - 1, prev + 1))}
+                      disabled={currentStepIndex >= result.iterations.length - 1}
+                      className="p-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 rounded-xl transition-all"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-center min-w-[60px] xl:min-w-[100px]">
+                    <span className="text-base xl:text-xl font-mono text-emerald-500 font-bold">
+                      {currentStepIndex + 1}
+                    </span>
+                    <span className="text-[10px] xl:text-sm text-zinc-600 mx-1">/</span>
+                    <span className="text-[10px] xl:text-sm font-mono text-zinc-500">
+                      {result.iterations.length}
+                    </span>
+                  </div>
+                </motion.div>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-zinc-800 border border-dashed border-zinc-800/50 rounded-3xl">
+                  <p className="text-[9px] uppercase tracking-[0.2em] font-medium opacity-30">Step controls will appear here</p>
                 </div>
+              )}
+            </AnimatePresence>
+          </div>
 
-                <button 
-                  onClick={() => setCurrentStepIndex(prev => Math.min(result.iterations.length - 1, prev + 1))}
-                  disabled={currentStepIndex >= result.iterations.length - 1}
-                  className="p-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 rounded-xl transition-all"
-                >
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="flex items-center justify-center min-w-[60px] xl:min-w-[100px]">
-                <span className="text-base xl:text-xl font-mono text-emerald-500 font-bold">
-                  {currentStepIndex + 1}
-                </span>
-                <span className="text-[10px] xl:text-sm text-zinc-600 mx-1">/</span>
-                <span className="text-[10px] xl:text-sm font-mono text-zinc-500">
-                  {result.iterations.length}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Iteration Panel: Order 3 on mobile portrait, Order 2 on landscape/desktop */}
           <div className="order-3 xl:order-2 landscape:order-2 w-full min-h-0 flex flex-col">
-            <div className="flex-none xl:flex-1 bg-zinc-900 border border-zinc-800 rounded-3xl p-4 xl:p-6 space-y-6 xl:space-y-8 xl:overflow-y-auto custom-scrollbar shadow-2xl">
+            <div className="flex-none xl:flex-1 bg-zinc-900 border border-zinc-800 rounded-3xl p-4 xl:p-6 space-y-6 xl:space-y-8 xl:overflow-y-auto custom-scrollbar shadow-2xl min-h-[400px]">
               <div className="space-y-1">
                 <h3 className="text-[10px] xl:text-[11px] uppercase tracking-widest font-bold text-zinc-500">Current Iteration</h3>
-                <p className="text-4xl xl:text-4xl font-mono text-white tracking-tighter">#{currentStepIndex + 1}</p>
+                <div className="min-h-[40px] flex items-end">
+                  <p className="text-4xl xl:text-4xl font-mono text-white tracking-tighter">
+                    {currentStepIndex >= 0 ? `#${currentStepIndex + 1}` : '--'}
+                  </p>
+                </div>
               </div>
 
-              {currentStep && (
-                <div className="space-y-6 xl:space-y-8">
-                  <div className="space-y-1 xl:space-y-2">
-                    <p className="text-[10px] xl:text-[10px] uppercase tracking-widest text-zinc-500 font-bold">x Value</p>
-                    <div className="overflow-x-auto custom-scrollbar-h pb-1">
-                      <p className="text-lg xl:text-lg font-mono text-blue-400 whitespace-nowrap tracking-tight">{currentStep.x.toFixed(decimalPlaces + 2)}</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1 xl:space-y-2">
-                    <p className="text-[10px] xl:text-[10px] uppercase tracking-widest text-zinc-500 font-bold">f(x)</p>
-                    <div className="overflow-x-auto custom-scrollbar-h pb-1">
-                      <p className="text-lg xl:text-lg font-mono text-emerald-500 whitespace-nowrap tracking-tight">{currentStep.fx.toExponential(6)}</p>
-                    </div>
-                  </div>
-
-                  {(currentStep.a !== undefined && currentStep.b !== undefined) && (
+              <div className="min-h-[300px] flex flex-col">
+                {currentStep ? (
+                  <div className="space-y-6 xl:space-y-8">
                     <div className="space-y-1 xl:space-y-2">
-                      <p className="text-[10px] xl:text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Interval [a, b]</p>
+                      <p className="text-[10px] xl:text-[10px] uppercase tracking-widest text-zinc-500 font-bold">x Value</p>
                       <div className="overflow-x-auto custom-scrollbar-h pb-1">
-                        <p className="text-sm xl:text-base font-mono text-blue-500 whitespace-nowrap tracking-tight">
-                          [{currentStep.a.toFixed(4)}, {currentStep.b.toFixed(4)}]
-                        </p>
+                        <p className="text-lg xl:text-lg font-mono text-blue-400 whitespace-nowrap tracking-tight">{currentStep.x.toFixed(decimalPlaces + 1)}</p>
                       </div>
                     </div>
-                  )}
 
-                  <div className="space-y-1 xl:space-y-2">
-                    <p className="text-[10px] xl:text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Error</p>
-                    <div className="overflow-x-auto custom-scrollbar-h pb-1">
-                      <p className="text-lg xl:text-lg font-mono text-rose-500 whitespace-nowrap tracking-tight">{currentStep.error.toExponential(6)}</p>
+                    <div className="space-y-1 xl:space-y-2">
+                      <p className="text-[10px] xl:text-[10px] uppercase tracking-widest text-zinc-500 font-bold">f(x)</p>
+                      <div className="overflow-x-auto custom-scrollbar-h pb-1">
+                        <p className="text-lg xl:text-lg font-mono text-emerald-500 whitespace-nowrap tracking-tight">{currentStep.fx.toFixed(decimalPlaces + 1)}</p>
+                      </div>
+                    </div>
+
+                    {(currentStep.a !== undefined && currentStep.b !== undefined) && (
+                      <div className="space-y-1 xl:space-y-2">
+                        <p className="text-[10px] xl:text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Interval [a, b]</p>
+                        <div className="overflow-x-auto custom-scrollbar-h pb-1">
+                          <p className="text-sm xl:text-base font-mono text-blue-500 whitespace-nowrap tracking-tight">
+                            [{currentStep.a.toFixed(decimalPlaces + 1)}, {currentStep.b.toFixed(decimalPlaces + 1)}]
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-1 xl:space-y-2">
+                      <p className="text-[10px] xl:text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Error</p>
+                      <div className="overflow-x-auto custom-scrollbar-h pb-1">
+                        <p className="text-lg xl:text-lg font-mono text-rose-500 whitespace-nowrap tracking-tight">{currentStep.error.toExponential(4)}</p>
+                      </div>
+                    </div>
+
+                    {/* Function Overview: Shown on all devices */}
+                    <div className="pt-6 border-t border-zinc-800">
+                      <div className="flex items-center gap-2 mb-3">
+                        <ChartIcon className="w-4 h-4 text-zinc-500" />
+                        <p className="text-[9px] xl:text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Function Overview</p>
+                      </div>
+                      <div className="aspect-square w-full bg-zinc-950 rounded-3xl overflow-hidden border border-zinc-800 shadow-inner relative group pointer-events-none select-none">
+                        {(() => {
+                          const limit = Math.max(0.1, Math.abs(rangeA) + Math.abs(rangeB));
+                          const limitStr = limit.toFixed(1);
+                          return (
+                            <>
+                              <Graph 
+                                equation={equation} 
+                                range={[-limit, limit]} 
+                                xDomain={[-limit, limit]}
+                                yDomain={[-limit, limit]}
+                                finalRoot={result?.root}
+                                calculatedRoot={currentStep?.x}
+                                precision={decimalPlaces}
+                                minimal={true}
+                              />
+                              {/* Coordinate Labels */}
+                              <div className="absolute top-2 left-2 text-[8px] font-mono text-zinc-600 pointer-events-none">
+                                (-{limitStr}, {limitStr})
+                              </div>
+                              <div className="absolute top-2 right-2 text-[8px] font-mono text-zinc-600 pointer-events-none">
+                                ({limitStr}, {limitStr})
+                              </div>
+                              <div className="absolute bottom-2 left-2 text-[8px] font-mono text-zinc-600 pointer-events-none">
+                                (-{limitStr}, -{limitStr})
+                              </div>
+                              <div className="absolute bottom-2 right-2 text-[8px] font-mono text-zinc-600 pointer-events-none">
+                                ({limitStr}, -{limitStr})
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
+                      {result?.root !== null && result?.root !== undefined && (
+                        <div className="mt-3 space-y-1">
+                          <p className="text-[9px] uppercase tracking-widest text-zinc-500 font-bold">Exact Root</p>
+                          <div className="overflow-x-auto custom-scrollbar-h pb-1">
+                            <p className="text-xs font-mono text-purple-400 whitespace-nowrap">{result.root}</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
-
-                  {/* Function Overview: Shown on all devices */}
-                  <div className="pt-6 border-t border-zinc-800">
-                    <div className="flex items-center gap-2 mb-3">
-                      <ChartIcon className="w-4 h-4 text-zinc-500" />
-                      <p className="text-[9px] xl:text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Function Overview</p>
-                    </div>
-                    <div className="aspect-square w-full bg-zinc-950 rounded-3xl overflow-hidden border border-zinc-800 shadow-inner relative group pointer-events-none select-none">
-                      {(() => {
-                        const limit = Math.max(0.1, Math.abs(rangeA) + Math.abs(rangeB));
-                        const limitStr = limit.toFixed(1);
-                        return (
-                          <>
-                            <Graph 
-                              equation={equation} 
-                              range={[-limit, limit]} 
-                              xDomain={[-limit, limit]}
-                              yDomain={[-limit, limit]}
-                              points={result?.root ? [{ x: result.root, y: 0, color: '#a855f7' }] : []}
-                              minimal={true}
-                            />
-                            {/* Coordinate Labels */}
-                            <div className="absolute top-2 left-2 text-[8px] font-mono text-zinc-600 pointer-events-none">
-                              (-{limitStr}, {limitStr})
-                            </div>
-                            <div className="absolute top-2 right-2 text-[8px] font-mono text-zinc-600 pointer-events-none">
-                              ({limitStr}, {limitStr})
-                            </div>
-                            <div className="absolute bottom-2 left-2 text-[8px] font-mono text-zinc-600 pointer-events-none">
-                              (-{limitStr}, -{limitStr})
-                            </div>
-                            <div className="absolute bottom-2 right-2 text-[8px] font-mono text-zinc-600 pointer-events-none">
-                              ({limitStr}, -{limitStr})
-                            </div>
-                          </>
-                        );
-                      })()}
-                    </div>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center text-center opacity-30 py-20">
+                    <Info className="w-12 h-12 mb-4" />
+                    <p className="text-[11px] uppercase tracking-widest font-bold">No step selected</p>
                   </div>
-                </div>
-              )}
-
-              {!currentStep && (
-                <div className="h-full flex flex-col items-center justify-center text-center opacity-30 py-20">
-                  <Info className="w-12 h-12 mb-4" />
-                  <p className="text-[11px] uppercase tracking-widest font-bold">No step selected</p>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -681,78 +930,93 @@ export default function App() {
                   <Info className="w-8 h-8 mb-3 opacity-20" />
                   <p className="text-[10px] uppercase tracking-widest font-bold">Configure parameters to see results</p>
                 </div>
-              ) : result.error ? (
-                <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-6 text-rose-400 flex items-start gap-4">
-                  <Info className="w-6 h-6 shrink-0" />
-                  <div>
-                    <h3 className="text-sm font-bold mb-1">Calculation Error</h3>
-                    <p className="text-xs opacity-80">{result.error}</p>
-                  </div>
-                </div>
               ) : (
-                <div className="h-full flex flex-col gap-6">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
-                      <p className="text-[8px] xl:text-[9px] uppercase tracking-widest text-zinc-500 font-bold mb-1">Approx. Root</p>
-                      <div className="overflow-x-auto custom-scrollbar-h">
-                        <p className="text-xl xl:text-2xl font-mono text-emerald-400 tracking-tighter whitespace-nowrap">
-                          {result.root?.toFixed(decimalPlaces)}
-                        </p>
+                <div className="h-full flex flex-col gap-6 overflow-hidden">
+                  {result.error && (
+                    <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-4 text-rose-400 flex items-start gap-3 shrink-0">
+                      <Info className="w-5 h-5 shrink-0" />
+                      <div>
+                        <h3 className="text-xs font-bold mb-0.5">Calculation Message</h3>
+                        <p className="text-[10px] opacity-80">{result.error}</p>
                       </div>
                     </div>
-                    <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
-                      <p className="text-[8px] xl:text-[9px] uppercase tracking-widest text-zinc-500 font-bold mb-1">Iterations</p>
-                      <p className="text-xl xl:text-2xl font-mono text-white tracking-tighter">{result.iterations.length}</p>
-                    </div>
-                    <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
-                      <p className="text-[8px] xl:text-[9px] uppercase tracking-widest text-zinc-500 font-bold mb-1">Final Error</p>
-                      <div className="overflow-x-auto custom-scrollbar-h">
-                        <p className="text-xl xl:text-2xl font-mono text-red-500 tracking-tighter whitespace-nowrap">
-                          {result.iterations[result.iterations.length - 1]?.error.toExponential(4)}
-                        </p>
+                  )}
+                  
+                  {result.iterations.length > 0 ? (
+                    <div className="flex-1 flex flex-col gap-6 overflow-hidden">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 shrink-0">
+                        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
+                          <p className="text-[8px] xl:text-[9px] uppercase tracking-widest text-zinc-500 font-bold mb-1">Approx. Root</p>
+                          <div className="overflow-x-auto custom-scrollbar-h">
+                            <p className="text-xl xl:text-2xl font-mono text-emerald-400 tracking-tighter whitespace-nowrap">
+                              {result.root !== null ? result.root.toFixed(decimalPlaces) : 'N/A'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
+                          <p className="text-[8px] xl:text-[9px] uppercase tracking-widest text-zinc-500 font-bold mb-1">Iterations</p>
+                          <p className="text-xl xl:text-2xl font-mono text-white tracking-tighter">{result.iterations.length}</p>
+                        </div>
+                        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
+                          <p className="text-[8px] xl:text-[9px] uppercase tracking-widest text-zinc-500 font-bold mb-1">Final Error</p>
+                          <div className="overflow-x-auto custom-scrollbar-h">
+                            <p className="text-xl xl:text-2xl font-mono text-red-500 tracking-tighter whitespace-nowrap">
+                              {result.iterations[result.iterations.length - 1]?.error.toExponential(4)}
+                            </p>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
 
-                  <div className="flex-1 bg-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden flex flex-col">
-                    <div className="overflow-auto custom-scrollbar flex-1">
-                      <table className="w-full text-left text-[11px] xl:text-xs font-mono whitespace-nowrap">
-                        <thead className="sticky top-0 bg-zinc-950 z-10">
-                          <tr className="text-zinc-600 border-b border-zinc-800">
-                            <th className="px-4 py-4 font-normal">n</th>
-                            <th className="px-4 py-4 font-normal">{selectedMethod === 'Newton-Raphson' ? 'x_n' : 'a'}</th>
-                            <th className="px-4 py-4 font-normal">{selectedMethod === 'Newton-Raphson' ? "f'(x_n)" : 'b'}</th>
-                            <th className="px-4 py-4 font-normal">{selectedMethod === 'Newton-Raphson' ? 'f(x_n)' : 'f(a)'}</th>
-                            <th className="px-4 py-4 font-normal">{selectedMethod === 'Newton-Raphson' ? '-' : 'f(b)'}</th>
-                            <th className="px-4 py-4 font-normal">{selectedMethod === 'Newton-Raphson' ? 'x_{n+1}' : 'x'}</th>
-                            <th className="px-4 py-4 font-normal">f(x)</th>
-                            <th className="px-4 py-4 font-normal">Error</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-zinc-800/50">
-                          {result.iterations.map((it, idx) => (
-                            <tr 
-                              key={it.iteration} 
-                              onClick={() => setCurrentStepIndex(idx)}
-                              className={cn(
-                                "group cursor-pointer transition-colors",
-                                currentStepIndex === idx ? "bg-emerald-500/10" : "hover:bg-zinc-800/30"
-                              )}
-                            >
-                              <td className="px-4 py-4 text-zinc-500">{it.iteration}</td>
-                              <td className="px-4 py-4 text-zinc-200">{it.a?.toFixed(8) ?? '-'}</td>
-                              <td className="px-4 py-4 text-zinc-200">{it.b?.toFixed(8) ?? '-'}</td>
-                              <td className="px-4 py-4 text-zinc-400">{it.fa?.toExponential(4) ?? '-'}</td>
-                              <td className="px-4 py-4 text-zinc-400">{it.fb?.toExponential(4) ?? '-'}</td>
-                              <td className="px-4 py-4 text-zinc-200 font-bold text-emerald-400">{it.x.toFixed(8)}</td>
-                              <td className="px-4 py-4 text-zinc-400">{it.fx.toExponential(4)}</td>
-                              <td className="px-4 py-4 text-emerald-500/70">{it.error.toExponential(4)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      <div className="flex-1 bg-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden flex flex-col">
+                        <div className="overflow-auto custom-scrollbar flex-1">
+                          <table className="w-full text-left text-[11px] xl:text-xs font-mono whitespace-nowrap">
+                            <thead className="sticky top-0 bg-zinc-950 z-10">
+                              <tr className="text-zinc-600 border-b border-zinc-800">
+                                <th className="px-4 py-4 font-normal">n</th>
+                                <th className="px-4 py-4 font-normal">{selectedMethod === 'Newton-Raphson' ? 'x_n' : 'a'}</th>
+                                <th className="px-4 py-4 font-normal">{selectedMethod === 'Newton-Raphson' ? "f'(x_n)" : 'b'}</th>
+                                <th className="px-4 py-4 font-normal">{selectedMethod === 'Newton-Raphson' ? 'f(x_n)' : 'f(a)'}</th>
+                                <th className="px-4 py-4 font-normal">{selectedMethod === 'Newton-Raphson' ? '-' : 'f(b)'}</th>
+                                <th className="px-4 py-4 font-normal">{selectedMethod === 'Newton-Raphson' ? 'x_{n+1}' : 'x'}</th>
+                                <th className="px-4 py-4 font-normal">f(x)</th>
+                                <th className="px-4 py-4 font-normal">Error</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-zinc-800/50">
+                              {result.iterations.map((it, idx) => (
+                                <tr 
+                                  key={it.iteration} 
+                                  onClick={() => setCurrentStepIndex(idx)}
+                                  className={cn(
+                                    "group cursor-pointer transition-colors",
+                                    currentStepIndex === idx ? "bg-emerald-500/10" : "hover:bg-zinc-800/30"
+                                  )}
+                                >
+                                  <td className="px-4 py-4 text-zinc-500">{it.iteration}</td>
+                                  <td className="px-4 py-4 text-zinc-200">
+                                    {selectedMethod === 'Newton-Raphson' ? (it.xPrev?.toFixed(decimalPlaces + 1) ?? '-') : (it.a?.toFixed(decimalPlaces + 1) ?? '-')}
+                                  </td>
+                                  <td className="px-4 py-4 text-zinc-200">
+                                    {selectedMethod === 'Newton-Raphson' ? (it.dfx?.toFixed(decimalPlaces + 1) ?? '-') : (it.b?.toFixed(decimalPlaces + 1) ?? '-')}
+                                  </td>
+                                  <td className="px-4 py-4 text-zinc-400">{it.fa?.toFixed(decimalPlaces + 1) ?? '-'}</td>
+                                  <td className="px-4 py-4 text-zinc-400">{it.fb?.toFixed(decimalPlaces + 1) ?? '-'}</td>
+                                  <td className="px-4 py-4 text-zinc-200 font-bold text-emerald-400">{it.x.toFixed(decimalPlaces + 1)}</td>
+                                  <td className="px-4 py-4 text-zinc-400">{it.fx.toFixed(decimalPlaces + 1)}</td>
+                                  <td className="px-4 py-4 text-emerald-500/70">{it.error.toExponential(4)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center text-zinc-600">
+                      <Info className="w-8 h-8 mb-3 opacity-20" />
+                      <p className="text-[10px] uppercase tracking-widest font-bold">No iterations to display</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
