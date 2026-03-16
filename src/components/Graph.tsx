@@ -237,7 +237,7 @@ export const Graph: React.FC<GraphProps> = ({
                 strokeWidth={2} 
                 strokeDasharray="3 3"
                 label={{ 
-                  position: 'insideTopLeft', 
+                  position: 'insideBottomLeft', 
                   value: 'Actual Root', 
                   fill: '#a855f7', 
                   fontSize: 10, 
@@ -262,7 +262,7 @@ export const Graph: React.FC<GraphProps> = ({
                 stroke="#06b6d4" 
                 strokeWidth={2} 
                 label={{ 
-                  position: 'insideTopRight', 
+                  position: 'insideBottomRight', 
                   value: 'Calculated Root', 
                   fill: '#06b6d4', 
                   fontSize: 10, 
