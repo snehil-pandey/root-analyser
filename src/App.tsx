@@ -89,7 +89,7 @@ export default function App() {
       }
     }
 
-    if (isNaN(rangeA) || isNaN(rangeB) || !isFinite(rangeA) || !isFinite(rangeB)) {
+    if (isNaN(rangeA) || !isFinite(rangeA) || (selectedMethod !== 'Newton-Raphson' && (isNaN(rangeB) || !isFinite(rangeB)))) {
       errors.range = 'Range values must be valid numbers';
     }
 
@@ -108,7 +108,7 @@ export default function App() {
       }
       return prev;
     });
-  }, [equation, rangeA, rangeB, decimalPlaces]);
+  }, [equation, rangeA, rangeB, decimalPlaces, selectedMethod]);
 
   const solve = useCallback(() => {
     setIsSolving(true);
@@ -488,9 +488,11 @@ export default function App() {
                   )}
                 </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className={cn("grid gap-4", selectedMethod === 'Newton-Raphson' ? "grid-cols-1" : "grid-cols-2")}>
                     <div>
-                      <label className="block text-sm font-medium text-zinc-400 mb-2">Start (a)</label>
+                      <label className="block text-sm font-medium text-zinc-400 mb-2">
+                        {selectedMethod === 'Newton-Raphson' ? 'Initial Guess (x₀)' : 'Start (a)'}
+                      </label>
                       <input 
                         type="text" 
                         id="range-a-input"
@@ -518,35 +520,37 @@ export default function App() {
                         placeholder="0"
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-zinc-400 mb-2">End (b)</label>
-                      <input 
-                        type="text" 
-                        id="range-b-input"
-                        value={rangeBInput}
-                        onChange={(e) => setRangeBInput(e.target.value)}
-                        onFocus={() => setIsAnyInputFocused(true)}
-                        onBlur={() => {
-                          setIsAnyInputFocused(false);
-                          const val = rangeBInput.trim();
-                          if (val === '') {
-                            setRangeB(3);
-                          } else {
-                            const num = Number(val);
-                            if (!isNaN(num)) {
-                              setRangeB(num);
+                    {selectedMethod !== 'Newton-Raphson' && (
+                      <div>
+                        <label className="block text-sm font-medium text-zinc-400 mb-2">End (b)</label>
+                        <input 
+                          type="text" 
+                          id="range-b-input"
+                          value={rangeBInput}
+                          onChange={(e) => setRangeBInput(e.target.value)}
+                          onFocus={() => setIsAnyInputFocused(true)}
+                          onBlur={() => {
+                            setIsAnyInputFocused(false);
+                            const val = rangeBInput.trim();
+                            if (val === '') {
+                              setRangeB(3);
                             } else {
-                              setRangeBInput(rangeB.toString());
+                              const num = Number(val);
+                              if (!isNaN(num)) {
+                                setRangeB(num);
+                              } else {
+                                setRangeBInput(rangeB.toString());
+                              }
                             }
-                          }
-                        }}
-                        className={cn(
-                          "w-full bg-zinc-950 border rounded-xl px-4 py-3 font-mono text-white focus:border-emerald-500 outline-none transition-all",
-                          validationErrors.range ? "border-rose-500" : "border-zinc-800"
-                        )}
-                        placeholder="3"
-                      />
-                    </div>
+                          }}
+                          className={cn(
+                            "w-full bg-zinc-950 border rounded-xl px-4 py-3 font-mono text-white focus:border-emerald-500 outline-none transition-all",
+                            validationErrors.range ? "border-rose-500" : "border-zinc-800"
+                          )}
+                          placeholder="3"
+                        />
+                      </div>
+                    )}
                   </div>
                 {validationErrors.range && (
                   <motion.p 
