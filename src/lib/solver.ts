@@ -288,20 +288,6 @@ export const solveSecant = (
   let fa = roundTo(f(currentA), p);
   let fb = roundTo(f(currentB), p);
 
-  // If initial points bracket the root, we can maintain the bracket
-  // If not, Secant is usually an open method, but the user requested bracketing behavior
-  if (fa * fb >= 0) {
-    // If they don't bracket, we'll try to find a bracket or just proceed as open method
-    // But the user said "make sure f(a)*f(b) < 0"
-    return { root: null, iterations, method: 'Secant', error: 'For bracketing Secant, f(x0) and f(x1) must have opposite signs.' };
-  }
-
-  // Ensure fa is negative and fb is positive
-  if (fa > 0) {
-    [currentA, currentB] = [currentB, currentA];
-    [fa, fb] = [fb, fa];
-  }
-
   let converged = false;
   for (let i = 1; i <= maxIter; i++) {
     if (Date.now() - startTime > 2000) { // 2 second timeout
@@ -348,15 +334,8 @@ export const solveSecant = (
     if (error < tol) {
       converged = true;
     }
-
-    // Bracketing logic (Modified Secant / Regula-Falsi style)
-    if (fa * fxNext < 0) {
-      currentB = xNext;
-      fb = fxNext;
-    } else {
-      currentA = xNext;
-      fa = fxNext;
-    }
+    currentB = xNext;
+    fb = fxNext;
   }
 
   return { root: currentB, iterations, method: 'Secant' };
