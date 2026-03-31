@@ -48,6 +48,13 @@ export default function App() {
   const [isLargeScreen, setIsLargeScreen] = useState(false);
   const [maxIterations, setMaxIterations] = useState<number | string>(100);
 
+  // Input states for better UX
+  const [equationInput, setEquationInput] = useState(equation);
+  const [rangeAInput, setRangeAInput] = useState(rangeA.toString());
+  const [rangeBInput, setRangeBInput] = useState(rangeB.toString());
+  const [decimalPlacesInput, setDecimalPlacesInput] = useState(decimalPlaces.toString());
+  const [maxIterationsInput, setMaxIterationsInput] = useState(maxIterations.toString());
+
   useEffect(() => {
     const checkSize = () => {
       const isLarge = window.innerWidth >= 1280;
@@ -58,6 +65,17 @@ export default function App() {
     window.addEventListener('resize', checkSize);
     return () => window.removeEventListener('resize', checkSize);
   }, []);
+
+  // Sync input states when not focused
+  useEffect(() => {
+    if (!isAnyInputFocused) {
+      setEquationInput(equation);
+      setRangeAInput(rangeA.toString());
+      setRangeBInput(rangeB.toString());
+      setDecimalPlacesInput(decimalPlaces.toString());
+      setMaxIterationsInput(maxIterations.toString());
+    }
+  }, [equation, rangeA, rangeB, decimalPlaces, maxIterations, isAnyInputFocused]);
 
   // Real-time validation effect
   useEffect(() => {
@@ -341,6 +359,11 @@ export default function App() {
     setResult(null);
     setValidationErrors({});
     setCurrentStepIndex(-1);
+    setEquationInput('x^3 - 4*x - 1');
+    setRangeAInput('0');
+    setRangeBInput('3');
+    setDecimalPlacesInput('5');
+    setMaxIterationsInput('100');
   };
 
   return (
@@ -433,10 +456,18 @@ export default function App() {
                     <input 
                       type="text" 
                       id="equation-input"
-                      value={equation}
-                      onChange={(e) => setEquation(e.target.value)}
+                      value={equationInput}
+                      onChange={(e) => setEquationInput(e.target.value)}
                       onFocus={() => setIsAnyInputFocused(true)}
-                      onBlur={() => setIsAnyInputFocused(false)}
+                      onBlur={() => {
+                        setIsAnyInputFocused(false);
+                        const val = equationInput.trim();
+                        if (val === '') {
+                          setEquation('x^3 - 4*x - 1');
+                        } else {
+                          setEquation(val);
+                        }
+                      }}
                       className={cn(
                         "w-full bg-zinc-950 border rounded-xl px-4 py-3 font-mono text-emerald-400 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all",
                         validationErrors.equation ? "border-rose-500" : "border-zinc-800"
@@ -463,18 +494,23 @@ export default function App() {
                       <input 
                         type="text" 
                         id="range-a-input"
-                        value={rangeA === 0 && isAnyInputFocused ? '' : rangeA}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val === '' || val === '-') {
-                            setRangeA(val as any);
+                        value={rangeAInput}
+                        onChange={(e) => setRangeAInput(e.target.value)}
+                        onFocus={() => setIsAnyInputFocused(true)}
+                        onBlur={() => {
+                          setIsAnyInputFocused(false);
+                          const val = rangeAInput.trim();
+                          if (val === '') {
+                            setRangeA(0);
                           } else {
                             const num = Number(val);
-                            if (!isNaN(num)) setRangeA(num);
+                            if (!isNaN(num)) {
+                              setRangeA(num);
+                            } else {
+                              setRangeAInput(rangeA.toString());
+                            }
                           }
                         }}
-                        onFocus={() => setIsAnyInputFocused(true)}
-                        onBlur={() => setIsAnyInputFocused(false)}
                         className={cn(
                           "w-full bg-zinc-950 border rounded-xl px-4 py-3 font-mono text-white focus:border-emerald-500 outline-none transition-all",
                           validationErrors.range ? "border-rose-500" : "border-zinc-800"
@@ -487,18 +523,23 @@ export default function App() {
                       <input 
                         type="text" 
                         id="range-b-input"
-                        value={rangeB === 0 && isAnyInputFocused ? '' : rangeB}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val === '' || val === '-') {
-                            setRangeB(val as any);
+                        value={rangeBInput}
+                        onChange={(e) => setRangeBInput(e.target.value)}
+                        onFocus={() => setIsAnyInputFocused(true)}
+                        onBlur={() => {
+                          setIsAnyInputFocused(false);
+                          const val = rangeBInput.trim();
+                          if (val === '') {
+                            setRangeB(3);
                           } else {
                             const num = Number(val);
-                            if (!isNaN(num)) setRangeB(num);
+                            if (!isNaN(num)) {
+                              setRangeB(num);
+                            } else {
+                              setRangeBInput(rangeB.toString());
+                            }
                           }
                         }}
-                        onFocus={() => setIsAnyInputFocused(true)}
-                        onBlur={() => setIsAnyInputFocused(false)}
                         className={cn(
                           "w-full bg-zinc-950 border rounded-xl px-4 py-3 font-mono text-white focus:border-emerald-500 outline-none transition-all",
                           validationErrors.range ? "border-rose-500" : "border-zinc-800"
@@ -524,18 +565,23 @@ export default function App() {
                       <input 
                         type="text" 
                         id="precision-input"
-                        value={decimalPlaces === 0 && isAnyInputFocused ? '' : decimalPlaces}
-                        onChange={(e) => {
-                          const val = e.target.value;
+                        value={decimalPlacesInput}
+                        onChange={(e) => setDecimalPlacesInput(e.target.value)}
+                        onFocus={() => setIsAnyInputFocused(true)}
+                        onBlur={() => {
+                          setIsAnyInputFocused(false);
+                          const val = decimalPlacesInput.trim();
                           if (val === '') {
-                            setDecimalPlaces(0);
+                            setDecimalPlaces(5);
                           } else {
                             const num = parseInt(val);
-                            if (!isNaN(num)) setDecimalPlaces(num);
+                            if (!isNaN(num) && num >= 1 && num <= 11) {
+                              setDecimalPlaces(num);
+                            } else {
+                              setDecimalPlacesInput(decimalPlaces.toString());
+                            }
                           }
                         }}
-                        onFocus={() => setIsAnyInputFocused(true)}
-                        onBlur={() => setIsAnyInputFocused(false)}
                         className={cn(
                           "w-24 bg-zinc-950 border rounded-xl px-4 py-3 font-mono text-white focus:border-emerald-500 outline-none transition-all",
                           validationErrors.precision ? "border-rose-500" : "border-zinc-800"
@@ -564,18 +610,23 @@ export default function App() {
                     <input 
                       type="text" 
                       id="max-iter-input"
-                      value={maxIterations === '' && isAnyInputFocused ? '' : maxIterations}
-                      onChange={(e) => {
-                        const val = e.target.value;
+                      value={maxIterationsInput}
+                      onChange={(e) => setMaxIterationsInput(e.target.value)}
+                      onFocus={() => setIsAnyInputFocused(true)}
+                      onBlur={() => {
+                        setIsAnyInputFocused(false);
+                        const val = maxIterationsInput.trim();
                         if (val === '') {
                           setMaxIterations('');
                         } else {
                           const num = parseInt(val);
-                          if (!isNaN(num)) setMaxIterations(num);
+                          if (!isNaN(num) && num >= 1 && num <= 500) {
+                            setMaxIterations(num);
+                          } else {
+                            setMaxIterationsInput(maxIterations.toString());
+                          }
                         }
                       }}
-                      onFocus={() => setIsAnyInputFocused(true)}
-                      onBlur={() => setIsAnyInputFocused(false)}
                       className={cn(
                         "w-24 bg-zinc-950 border rounded-xl px-4 py-3 font-mono text-white focus:border-emerald-500 outline-none transition-all",
                         validationErrors.maxIter ? "border-rose-500" : "border-zinc-800"
